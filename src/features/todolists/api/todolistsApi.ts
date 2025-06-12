@@ -1,5 +1,4 @@
 import { baseApi } from "@/app/baseApi"
-import { instance } from "@/common/instance"
 import type { BaseResponse } from "@/common/types"
 import type { DomainTodolist } from "@/features/todolists/lib/types"
 import type { Todolist } from "./todolistsApi.types"
@@ -8,8 +7,8 @@ export const todolistsApi = baseApi.injectEndpoints({
   endpoints: (build) => ({
     getTodolists: build.query<DomainTodolist[], void>({
       query: () => "todo-lists",
-      transformResponse: (todolists: Todolist[]): DomainTodolist[] =>
-        todolists.map((todolist) => ({ ...todolist, filter: "all", entityStatus: "idle" })),
+      transformResponse: (todolists: Todolist[]): DomainTodolist[] => 
+        todolists.map((todolist) => ({ ...todolist, filter: "all" })),
       providesTags: ["Todolist"],
     }),
     addTodolist: build.mutation<BaseResponse<{ item: Todolist }>, string>({
@@ -25,6 +24,19 @@ export const todolistsApi = baseApi.injectEndpoints({
         url: `todo-lists/${id}`,
         method: "DELETE",
       }),
+      async onQueryStarted(id, {dispatch, queryFulfilled}) {
+         const patchResult = dispatch(
+              todolistsApi.util.updateQueryData("getTodolists", undefined, (state) => {
+                const index = state.findIndex((todo) => todo.id === id)
+                if (index !== -1) state.splice(index, 1)
+              }),
+            )
+            try {
+              await queryFulfilled
+            } catch (error) {
+              patchResult.undo()
+            }
+      },
       invalidatesTags: ["Todolist"],
     }),
     updateTodolistTitle: build.mutation<BaseResponse, { id: string; title: string }>({
@@ -33,6 +45,19 @@ export const todolistsApi = baseApi.injectEndpoints({
         method: "PUT",
         body: { title },
       }),
+      async onQueryStarted({id, title}, {dispatch, queryFulfilled}) {
+        const patchResult = dispatch(
+             todolistsApi.util.updateQueryData("getTodolists", undefined, (state) => {
+              const index = state.findIndex(todo => todo.id === id)
+              if (index !== -1) state[index].title = title
+             }),
+           )
+           try {
+             await queryFulfilled
+           } catch (error) {
+             patchResult.undo()
+           }
+     },
       invalidatesTags: ["Todolist"],
     }),
   }),
@@ -45,18 +70,3 @@ export const {
   useUpdateTodolistTitleMutation,
 } = todolistsApi
 
-export const _todolistsApi = {
-  getTodolists() {
-    return instance.get<Todolist[]>("/todo-lists")
-  },
-  changeTodolistTitle(payload: { id: string; title: string }) {
-    const { id, title } = payload
-    return instance.put<BaseResponse>(`/todo-lists/${id}`, { title })
-  },
-  createTodolist(title: string) {
-    return instance.post<BaseResponse<{ item: Todolist }>>("/todo-lists", { title })
-  },
-  deleteTodolist(id: string) {
-    return instance.delete<BaseResponse>(`/todo-lists/${id}`)
-  },
-}
